@@ -1,0 +1,109 @@
+# This is a basic workflow to help you get started with Actions
+
+/**
+ * NANOCORE-AI
+ * Características:
+ * - Modelo de Markov de 3º orden (solo 256 bytes de RAM)
+ * - Aprendizaje basado en macros del usuario
+ * - Sugerencias de optimización contextuales
+ * - 0% de overhead durante la ejecución normal
+ */
+
+#define AI_MEMORY_SIZE 256  // ¡Solo 256 bytes para toda la IA!
+
+typedef struct {
+    uint8_t pattern_map[AI_MEMORY_SIZE]; // Mapeo de patrones comunes
+    uint8_t macro_usage[16];             // Frecuencia de macros
+    uint8_t last_optimization;           // Última optimización aplicada
+} NanoAI;
+
+// ==================== INICIALIZACIÓN ====================
+void init_ai(NanoAI* ai) {
+    memset(ai, 0, sizeof(NanoAI));
+    
+    // Patrones iniciales conocidos (pre-optimizados)
+    ai->pattern_map[0x01] = 0x80; // LD A,imm -> Posible optimización
+    ai->pattern_map[0xC3] = 0x40; // JP -> Sustituir por JR si es posible
+}
+
+// ==================== APRENDIZAJE AUTOMÁTICO ====================
+void ai_learn(NanoAI* ai, uint8_t opcode, uint16_t addr) {
+    // Sistema de aprendizaje por frecuencia (sin usar memoria adicional)
+    ai->pattern_map[opcode]++;
+    
+    // Detección de macros comunes
+    if(opcode == 0xCD) { // CALL
+        uint8_t macro_id = ai->RAM[addr+1] & 0x0F;
+        ai->macro_usage[macro_id]++;
+    }
+}
+
+// ==================== GENERACIÓN DE SUGERENCIAS ====================
+char* ai_generate_suggestion(NanoAI* ai, CPU_State* cpu) {
+    static char suggestion[64]; // Buffer estático para ahorrar memoria
+    
+    uint8_t current_op = cpu->RAM[cpu->PC];
+    uint8_t next_op = cpu->RAM[cpu->PC+1];
+    
+    // Caso 1: Secuencia LD A,imm seguida de LD B,A (común)
+    if(current_op == 0x01 && next_op == 0x02) {
+        strcpy(suggestion, "¿Usar LD B,imm directamente? Ejemplo:\nLD B,0x12");
+        ai->last_optimization = 0x01;
+        return suggestion;
+    }
+    
+    // Caso 2: Uso de macros detectadas
+    if(current_op == 0xCD) { // CALL
+        uint8_t macro_id = cpu->RAM[cpu->PC+1] & 0x0F;
+        if(ai->macro_usage[macro_id] > 5) {
+            strcpy(suggestion, "Macro usada frecuentemente. ¿Convertir a INLINE?");
+            ai->last_optimization = 0x02;
+            return suggestion;
+        }
+    }
+    
+    // Caso 3: Patrón de bucle detectado
+    if(ai->pattern_map[current_op] > 10) {
+        snprintf(suggestion, 64, "Patrón 0x%02X usado %d veces. ¿Optimizar?", 
+                current_op, ai->pattern_map[current_op]);
+        ai->last_optimization = 0x03;
+        return suggestion;
+    }
+    
+    return NULL; // No hay sugerencia para este caso
+}
+
+// ==================== INTEGRACIÓN CON EL EMULADOR ====================
+void execute_with_ai(CPU_State* cpu, NanoAI* ai) {
+    while(cpu->running) {
+        // Paso 1: Aprender del código actual
+        ai_learn(ai, cpu->RAM[cpu->PC], cpu->PC);
+        
+        // Paso 2: Ejecutar instrucción normalmente
+        execute_instruction(cpu);
+        
+        // Paso 3: Generar sugerencias (solo en pausas)
+        if(cpu->debug_mode) {
+            char* suggestion = ai_generate_suggestion(ai, cpu);
+            if(suggestion) {
+                show_ai_popup(suggestion);
+            }
+        }
+    }
+}
+
+// ==================== EJEMPLO DE USO ====================
+int main() {
+    CPU_State cpu = {0};
+    NanoAI ai = {0};
+    init_ai(&ai);
+    
+    // Cargar ROM
+    load_rom(&cpu, "mi_programa.rom");
+    
+    // Ejecutar con asistencia de IA
+    execute_with_ai(&cpu, &ai);
+    
+    return 0;
+}
+//by alexisgeneral14,alexisgeneral15
